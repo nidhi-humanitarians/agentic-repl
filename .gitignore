@@ -1,0 +1,41 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment Variables & Secrets
+.env
+.env.local
+*.key
+*.pem
+
+# IDE & OS Artifacts
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# DATASETS, CORPUS & LARGE DATA FILES (Strictly excluded from Git)
+corpus/*.txt
+corpus/*.json
+corpus/temp/
+data/
+*.parquet
+*.txt
+!requirements.txt
+*.pdf
+*.zip
+*.tar.gz
+
+# Evaluation Logs & Scorecard Outputs
+evals/*.json
