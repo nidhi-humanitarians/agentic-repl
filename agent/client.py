@@ -1,10 +1,17 @@
 from typing import List, Dict, Any, Optional
 import openai
-from agentic_search_pi.config.settings import (
-    PARTICLE_BASE_URL,
-    PARTICLE_API_KEY,
-    DEFAULT_MODEL
-)
+try:
+    from agentic_search_pi.config.settings import (
+        PARTICLE_BASE_URL,
+        PARTICLE_API_KEY,
+        DEFAULT_MODEL
+    )
+except ImportError:
+    from config.settings import (
+        PARTICLE_BASE_URL,
+        PARTICLE_API_KEY,
+        DEFAULT_MODEL
+    )
 
 class ParticleAIClient:
     def __init__(self, api_key: str = PARTICLE_API_KEY, base_url: str = PARTICLE_BASE_URL):

@@ -15,7 +15,7 @@ Standard Large Language Models struggle with documents exceeding thousands of pa
 Instead of treating the book as a prompt, this system treats the book as an **interactive file environment**:
 * The **Pi Agent** writes Python scripts (`grep`, regex, line slicers, sorting algorithms) inside a persistent **Python REPL**.
 * The agent only pulls small, relevant 10–20 line windows into context.
-* **Results:** High accuracy across 2,500-page books, average query latency of **~16.5 seconds**, and a **99.6% token cost reduction** compared to raw context stuffing.
+* **Results:** **79.0% accuracy across 100 distinct 2,500-page books** (~240,000 cumulative pages), average query latency of **~25.8 seconds**, and a **99.6% token cost reduction** compared to raw context stuffing.
 
 ---
 
@@ -46,13 +46,16 @@ agentic-repl/
 │   └── __init__.py
 │
 ├── corpus/                        # Document loaders & dataset streaming
-│   └── download_babilong.py       # On-demand streaming downloader for BABILong (PG-19) texts
+│   ├── download_babilong.py       # Single-sample streaming downloader
+│   └── download_batch.py          # High-speed batch streaming downloader for 1M datasets
 │
 └── evals/                         # Benchmark runners & evaluation scorecards
-    └── benchmark_1M.py            # Multi-text, multi-sample benchmark runner (QA1–QA10)
+    ├── evaluator.py               # Canonical semantic answer evaluator (quantities, binary, entities)
+    ├── benchmark_1M.py            # Multi-text runner with scorecard accumulation
+    └── run_100_benchmark.py       # Parallel multi-worker 100-sample benchmark runner
 ```
 
-> **Data Policy:** In accordance with repository best practices, raw corpus texts and datasets are **not tracked in Git** and are excluded via `.gitignore`. The dataset streamer (`corpus/download_babilong.py`) fetches target corpora on demand.
+> **Data Policy:** In accordance with repository best practices, raw corpus texts and datasets are **not tracked in Git** and are excluded via `.gitignore`. The dataset streamers (`corpus/download_batch.py`) fetch target corpora on demand.
 
 ---
 
@@ -84,81 +87,84 @@ Run a search query against any text file:
 python -m run_search --corpus path/to/your_book.txt --query "Where did the author define Hamiltonian?"
 ```
 
-### B. Stream a 2,000+ Page (1M Token) Benchmark Sample
-Download any task sample from the official BABILong benchmark on demand:
+### B. Download 1M Token Samples On Demand
+Download samples from the official BABILong benchmark:
 ```bash
-# Download Task QA2 at the 1M token (~2,500 pages) scale:
-python corpus/download_babilong.py --task qa2 --length 1M --sample_idx 0
+# Download 10 samples (s0-s9) for tasks QA1 through QA10 at the 1M token (~2,500 pages) scale:
+python corpus/download_batch.py --tasks qa1,qa2,qa3,qa4,qa5,qa6,qa7,qa8,qa9,qa10 --count 10
 ```
 
-### C. Run the Multi-Text 1M Benchmark
-Benchmark tasks across multiple 2,500-page texts with automatic scorecard tracking:
+### C. Run the Parallel 100-Book Benchmark
+Benchmark all 10 tasks across 100 distinct 2,500-page books using parallel workers:
 ```bash
-# Evaluate tasks QA1 through QA10 across 2 distinct book texts per task:
-python evals/benchmark_1M.py --tasks qa1,qa2,qa3,qa4,qa5,qa6,qa7,qa8,qa9,qa10 --samples 0,1
+python evals/run_100_benchmark.py --tasks qa1,qa2,qa3,qa4,qa5,qa6,qa7,qa8,qa9,qa10 --count 10 --workers 5
 ```
 
 ---
 
-## 5. Complete Empirical Benchmark Records (1M Context Tier / ~2,500 Pages)
+## 5. Complete Empirical Benchmark Records (100 Books / ~240,000 Pages at 1M Scale)
 
-Evaluated across **20 distinct 2,000+ page books** from the Project Gutenberg PG-19 corpus (**43,489 cumulative pages, ~1.1 million lines**):
+Evaluated across **100 distinct, full-length 2,000+ page books** from Project Gutenberg PG-19 (10 samples per task across QA1 through QA10):
 
-| Run ID | Task Type | Book Title, Author & Literary Genre | Pages | Turns | Time | Ground Truth | Result |
-| :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **QA1_s0** | Single Fact Lookup | Winston Churchill, *The Crisis* (Historical Fiction) | ~2,214 | 15 | 25.96s | `bathroom` | **PASS** |
-| **QA1_s1** | Single Fact Lookup | Herbert Vivian, *Tunisia & Barbary Pirates* (Travelogue) | ~2,206 | **3** | **2.08s** | `kitchen` | **PASS** |
-| **QA2_s0** | 2-Hop State Tracking | A. Barker, *Manual of Surgical Operations* (Medical) | ~2,058 | 15 | 19.36s | `kitchen` | **FAIL** |
-| **QA2_s1** | 2-Hop State Tracking | James Oliver Curwood, *The Golden Snare* (Adventure) | ~2,192 | 14 | 24.49s | `garden` | **PASS** |
-| **QA3_s0** | 3-Hop Object Transfer | Sir Walter Scott, *The Fortunes of Nigel* (Romance) | ~2,179 | 15 | 29.76s | `kitchen` | **FAIL** |
-| **QA3_s1** | 3-Hop Object Transfer | Capt. John Smith / E. Arber, *Colonial Works* (History) | ~2,190 | 15 | 26.19s | `bathroom` | **FAIL** |
-| **QA4_s0** | Spatial Deduction | Palmer Cox, *The Brownies: Their Book* (Verse) | ~2,209 | **5** | **6.24s** | `bedroom` | **PASS** |
-| **QA4_s1** | Spatial Deduction | P. G. Wodehouse, *Something New* (Comedy Fiction) | ~2,235 | 9 | 10.93s | `kitchen` | **PASS** |
-| **QA5_s0** | Actor Interactions | Robert Herrick, *The Common Lot* (Realist Fiction) | ~2,226 | **3** | **2.50s** | `jeff` | **PASS** |
-| **QA5_s1** | Actor Interactions | Frank L. Packard, *The Miracle Man* (Crime Fiction) | ~2,229 | 7 | 7.47s | `bill` | **PASS** |
-| **QA6_s0** | Binary Verification | *Historic Galena & Bench Street Annals* (Local History) | ~2,219 | 15 | 62.99s | `yes` | **PASS** |
-| **QA6_s1** | Binary Verification | Benjamin Disraeli, *Coningsby* (Political Fiction) | ~2,270 | 15 | 23.92s | `no` | **PASS** |
-| **QA7_s0** | Counting Aggregation | *Monograph on the United States Flag* (History) | ~2,150 | 15 | 46.66s | `one` | **PASS** |
-| **QA7_s1** | Counting Aggregation | Goldwin Smith, *Guesses at the Riddle* (Philosophy) | ~2,190 | 11 | 13.16s | `none` | **PASS\*** |
-| **QA8_s0** | Inventory Tracking | Anthony Hope, *The Dolly Dialogues* (Society Comedy) | ~2,196 | **4** | **12.55s** | `nothing` | **PASS** |
-| **QA8_s1** | Inventory Tracking | Victor Hugo, *Les Misérables* (Epic Novel, trans.) | ~2,222 | 14 | 13.92s | `milk` | **PASS** |
-| **QA9_s0** | Simple Negation | *Clinical Pathology of the Stomach* (Medical Textbook) | ~2,102 | **3** | **2.32s** | `no` | **PASS** |
-| **QA9_s1** | Simple Negation | *UK Board of Trade Railway Accident Reports* (Gov) | ~2,200 | 7 | 11.35s | `no` | **PASS** |
-| **QA10_s0** | Indefinite Knowledge | Richard Harding Davis, *The King's Jackal* (Drama) | ~2,183 | **5** | **5.60s** | `yes` | **PASS** |
-| **QA10_s1** | Indefinite Knowledge | Arthur Symons, *Collected Poems & Sonnets* (Verse) | ~2,242 | 7 | 7.18s | `no` | **PASS** |
-| **TOTAL** | **20 Evaluations** | **43,489 Cumulative Pages** | **Avg: 8.9** | **Avg: 16.5s** | **85.0% Semantic Accuracy (17/20)** |
+| Task | Reasoning Category | Completed | Passed | Accuracy (%) | Avg Turns | Avg Latency | Status |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **QA1** | Single Supporting Fact (1-Hop Lookup) | 10 | 10 | **100.0%** | 12.3 | 20.5s | **PERFECT** |
+| **QA2** | Two Supporting Facts (2-Hop State Tracking) | 10 | 3 | **30.0%** | 15.0 | 32.3s | Bottleneck |
+| **QA3** | Three Supporting Facts (3-Hop Object Transfer) | 10 | 2 | **20.0%** | 15.0 | 36.4s | Bottleneck |
+| **QA4** | Two Argument Relations (Spatial Deduction) | 10 | 10 | **100.0%** | 14.7 | 44.8s | **PERFECT** |
+| **QA5** | Three Argument Relations (Actor Interactions) | 10 | 9 | **90.0%** | 11.5 | 17.3s | **STRONG** |
+| **QA6** | Yes/No Fact Verification (Binary Status) | 10 | 10 | **100.0%** | 13.6 | 24.5s | **PERFECT** |
+| **QA7** | Counting Aggregation (Net Held Inventory) | 10 | 7 | **70.0%** | 13.3 | 30.6s | Moderate |
+| **QA8** | Lists & Held Inventory (Active Set) | 10 | 9 | **90.0%** | 10.6 | 14.6s | **STRONG** |
+| **QA9** | Simple Negation (Negative Logic) | 10 | 10 | **100.0%** | 11.9 | 21.4s | **PERFECT** |
+| **QA10** | Indefinite Knowledge (Disjunction / Either-Or) | 10 | 9 | **90.0%** | 9.1 | 12.3s | **STRONG** |
+| **TOTAL** | **Full 10-Task Benchmark Summary** | **100** | **79** | **79.0%** | **12.7** | **25.8s** | **ROBUST BASELINE** |
 
-*\*Note on QA7_s1: The model deduced `0 (zero) — Mary is not carrying any objects` which was semantically correct but initially failed a rigid string equality check looking for `none`.*
+* Cumulative scorecard log with full trajectories is preserved in `evals/babilong_100_scorecard.json`.
 
 ---
 
-## 6. Analysis of Failure Modes
+## 6. Comprehensive Failure Taxonomy & Root Cause Analysis
 
-Across the 20 benchmark runs on 1M token texts, analysis of failed trajectories revealed four distinct failure modes:
+Across the 100 evaluated books, **79 passed and 21 failed**. A deep-dive analysis of all 21 failure trajectories reveals four distinct failure categories:
 
-### Failure Mode 1: Narrative Bleed & Background Entity Distraction (`QA2_s0`)
-* **Problem:** In a 2,000-page historical novel, rich background descriptions overshadowed the terse synthetic clues.
-* **Evidence:** In `QA2_s0`, the agent located the clues (`Daniel took the football there`), but when resolving *"there"*, it read surrounding literary text describing Perth, Scotland, and concluded: *"The football is in Simon Glover's house."*
-* **Root Cause:** Saliency competition between vivid natural narrative and synthetic task sentences.
+```
+                          DISTRIBUTION OF THE 21 FAILURES
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │ ██████████████████████████████████████████████████░░░░░░░░░░░░░░░░░░░  │
+  │ Multi-Hop State Tracking & Turn Exhaustion (QA2 & QA3): 15 (71.4%)     │
+  │ Counting Aggregation in Dense Noise (QA7):               3 (14.3%)     │
+  │ Inventory Multi-Item Drop (QA8):                         1 (4.8%)      │
+  │ Actor Transfer Ambiguity (QA5):                          1 (4.8%)      │
+  │ Uncertainty Phrasing (QA10):                             1 (4.8%)      │
+  └────────────────────────────────────────────────────────────────────────┘
+```
 
-### Failure Mode 2: Multi-Hop Search Explosion & Turn Budget Trapping (`QA3_s0`)
-* **Problem:** 3-hop reasoning requires tracking three separate actors and an object across thousands of pages.
-* **Evidence:** In `QA3_s0`, searching for all characters returned 290 regex matches across 53,000 lines. Sifting through 290 matches consumed the entire 15-turn budget before synthesis could occur.
-* **Root Cause:** Combinatorial query explosion on broad regexes without intermediate faceting.
+### Category 1: Multi-Hop State Tracking & Turn Budget Exhaustion (15 Failures — 71.4% of all errors)
+* **Tasks Affected:** QA2 (7 failures) and QA3 (8 failures).
+* **The Mechanism:** 
+  * In QA3, questions ask for previous states: *"Where was the apple before the bedroom?"*.
+  * The agent spends 10–12 turns searching for current character positions or issuing broad regex queries (`grep("John|Mary|Sandra|Daniel")`) that return 200+ matches.
+  * Sifting through 200 matches causes the agent to hit the 15-turn ceiling before it can synthesize the reverse chronological order.
+  * In QA2, the agent occasionally stops at an intermediate location or anchors on background narrative geography (e.g. *"Simon Glover's house in Perth"* or *"Atlanta"*).
 
-### Failure Mode 3: Native Tool Protocol Syntax Leakage (`QA3_s1`)
-* **Problem:** When forced to wrap up at the step limit (Turn 15), DeepSeek emitted its native `<｜DSML｜ invoke name="python_repl">` syntax directly into its text stream.
-* **Root Cause:** Tool protocol parsing boundary failure when step budgets are abruptly reached.
+### Category 2: Counting Aggregation in Dense Narrative Text (3 Failures — 14.3%)
+* **Task Affected:** QA7 (`QA7_s1`, `QA7_s2`, `QA7_s3`).
+* **The Mechanism:** QA7 requires computing net inventory ($\text{pickups} - \text{drops}$) across 55,000 lines. In noisy texts with character homonyms, the agent missed one drop event or misattributed a common noun mentioned in background dialogue.
 
-### Failure Mode 4: Rigid Evaluator String Mismatch (`QA7_s1`)
-* **Problem:** The model deduced `0 (zero) — Mary is not carrying any objects`, but the benchmark target was literally the string `none`.
-* **Root Cause:** Semantic equivalence was not canonicalized in the evaluator regex.
+### Category 3: Multiple Item Inventory Capture (1 Failure — 4.8%)
+* **Task Affected:** QA8 (`QA8_s7`).
+* **The Mechanism:** Question asked: *"What is John carrying?"*. Target was `apple,football`. The agent successfully found the apple acquisition but stopped before checking if John had also acquired the football, answering only `The apple`.
+
+### Category 4: Actor & Uncertainty Phrasing (2 Failures — 9.5%)
+* **Tasks Affected:** QA5 (`QA5_s2`) and QA10 (`QA10_s3`).
+* **The Mechanism:** In QA10_s3 (Target: `maybe`), the model correctly deduced that Bill was either in the school or office, but explained it descriptively without explicitly uttering the word `maybe`.
 
 ---
 
 ## 7. Proposed Systematic Solutions (The 4-Layer Harness Architecture)
 
-To resolve these issues systematically without entering a brittle "prompt-patching" cycle, the following four architectural layers are proposed:
+To resolve the 21 failure cases systematically without brittle prompt engineering, the following four architectural layers are being deployed:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -168,19 +174,19 @@ To resolve these issues systematically without entering a brittle "prompt-patchi
 ├─────────────────────────────────────────────────────────────┤
 │ 3. Typed Final Output Contracts (Schema Bounding)           │
 ├─────────────────────────────────────────────────────────────┤
-│ 4. Versioned Scenario Library (Regression Gating)           │
+│ 4. Dynamic Turn Allocation (Task-Adaptive Budgets)          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 1. **Tool-Boundary Middleware:**
-   * **Protocol Auto-Healing:** Intercept raw DSML or XML tool calls in the response body before the loop processes them, automatically redirecting them to the REPL.
-   * **Query Auto-Faceting:** When `grep` matches more than 40 lines, the REPL returns a quartile frequency histogram (e.g., *"210 matches clustered between lines 15,000–30,000"*), forcing the agent to narrow its query programmatically.
+   * **Protocol Auto-Healing:** Automatically intercepts and evaluates raw `<｜DSML｜ ...>` and XML tool tokens before they enter message history.
+   * **Query Auto-Faceting:** When `grep` matches > 40 lines, the REPL returns a quartile histogram (e.g. *"210 matches clustered between lines 15,000–30,000"*), preventing search explosion.
 2. **Out-of-Band Steering Controller:**
-   * An external supervisor monitoring trajectory invariants after each turn (watching for repetitive search thrashing, narrative lore distraction, or lingering near budget ceilings) and injecting bounded steering templates or NO-OPs.
-3. **Typed Output Contracts & Canonical Normalization:**
-   * Constrain final answers to a structured Pydantic schema (`answer_entity`, `decisive_lines`, `confidence`) with canonical synonym mapping (`0` $\leftrightarrow$ `zero` $\leftrightarrow$ `none` $\leftrightarrow$ `nothing`).
-4. **Versioned Regression Suite:**
-   * Maintain a curated scenario library of ~50 edge-case documents to run regression gating before deploying prompt or harness updates.
+   * Monitors trajectory invariants after each turn. If an agent loops on broad queries or reads background narrative lore for 2 consecutive turns, it injects a steering nudge: *"Focus strictly on synthetic movement verbs: journeyed to, went to, moved to."*
+3. **Task-Adaptive Dynamic Turn Budgeting:**
+   * Allocate 5–8 turns for single-hop and spatial queries (QA1, QA4, QA9), and grant 20–25 turns for 3-hop transfer queries (QA2, QA3), eliminating turn-ceiling truncation.
+4. **Typed Output Contracts & Canonical Normalization:**
+   * Constrain final answers to a structured Pydantic schema with canonical synonym mapping (`0` $\leftrightarrow$ `zero` $\leftrightarrow$ `none` $\leftrightarrow$ `nothing`, `either/or` $\leftrightarrow$ `maybe`).
 
 ---
 

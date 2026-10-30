@@ -4,11 +4,18 @@ import time
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from agentic_search_pi.agent.client import ParticleAIClient
-from agentic_search_pi.agent.prompts import SYSTEM_SEARCH_PROMPT
-from agentic_search_pi.agent.tools_schema import ALL_TOOLS
-from agentic_search_pi.repl.session import PythonREPL
-from agentic_search_pi.config.settings import DEFAULT_MODEL
+try:
+    from agentic_search_pi.agent.client import ParticleAIClient
+    from agentic_search_pi.agent.prompts import SYSTEM_SEARCH_PROMPT
+    from agentic_search_pi.agent.tools_schema import ALL_TOOLS
+    from agentic_search_pi.repl.session import PythonREPL
+    from agentic_search_pi.config.settings import DEFAULT_MODEL
+except ImportError:
+    from agent.client import ParticleAIClient
+    from agent.prompts import SYSTEM_SEARCH_PROMPT
+    from agent.tools_schema import ALL_TOOLS
+    from repl.session import PythonREPL
+    from config.settings import DEFAULT_MODEL
 
 class PiAgent:
     """
@@ -210,7 +217,8 @@ class PiAgent:
                 "role": "user",
                 "content": (
                     f"You have finished searching. Based on all the observations, lines, and facts discovered "
-                    f"in the REPL executions above, please provide your final factual answer to the question: '{query}'"
+                    f"in the REPL executions above, please provide your final factual answer to the question: '{query}'. "
+                    f"State your answer in plain text without code or tool calls."
                 )
             })
             resp = self.client.chat_completion(
@@ -219,7 +227,32 @@ class PiAgent:
                 temperature=0.0,
                 max_tokens=512
             )
-            final_answer = resp.choices[0].message.content or ""
+            raw_final = resp.choices[0].message.content or ""
+            reasoning = getattr(resp.choices[0].message, "reasoning_content", "") or ""
+
+            # Protocol auto-healing: if the model emitted raw tool tokens, auto-heal and execute
+            if "<｜DSML｜" in raw_final or "<tool_call>" in raw_final or "```python" in raw_final:
+                extracted = self._extract_code_from_text(raw_final)
+                if extracted and ("grep(" in extracted or "read_lines(" in extracted or "open(" in extracted):
+                    repl_res = self.repl.execute(extracted)
+                    out_s = repl_res["output"]
+                    followup = self.client.chat_completion(
+                        messages=[
+                            *self.messages,
+                            {"role": "assistant", "content": raw_final},
+                            {"role": "user", "content": f"[Final Tool Observation]: {out_s}\nNow state your definitive answer directly in one sentence without tools."}
+                        ],
+                        model=self.model,
+                        temperature=0.0,
+                        max_tokens=256
+                    )
+                    raw_final = followup.choices[0].message.content or raw_final
+
+            # Strip any residual protocol tags
+            clean_final = re.sub(r"<[｜|]DSML[｜|][^>]*>", "", raw_final)
+            clean_final = re.sub(r"</?[a-zA-Z0-9_\-]+>", "", clean_final).strip()
+            final_answer = clean_final if clean_final else (reasoning.strip() if reasoning else raw_final)
+
             self.trajectory.append({
                 "turn": turn + 1,
                 "type": "final_synthesis",

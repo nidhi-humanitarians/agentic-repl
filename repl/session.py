@@ -3,7 +3,10 @@ import io
 import ast
 import traceback
 from typing import Dict, Any, Optional
-from agentic_search_pi.repl.helpers import SearchHelpers
+try:
+    from agentic_search_pi.repl.helpers import SearchHelpers
+except ImportError:
+    from repl.helpers import SearchHelpers
 
 class PythonREPL:
     """

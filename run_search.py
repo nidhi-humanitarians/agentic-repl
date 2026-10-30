@@ -1,8 +1,14 @@
 import json
 import argparse
 from pathlib import Path
-from agentic_search_pi.agent.pi_loop import PiAgent
-from agentic_search_pi.config.settings import DEFAULT_MODEL, CORPUS_DIR, EVALS_DIR
+try:
+    from agentic_search_pi.agent.pi_loop import PiAgent
+    from agentic_search_pi.config.settings import DEFAULT_MODEL, CORPUS_DIR, EVALS_DIR
+    from agentic_search_pi.evals.evaluator import check_answer_match
+except ImportError:
+    from agent.pi_loop import PiAgent
+    from config.settings import DEFAULT_MODEL, CORPUS_DIR, EVALS_DIR
+    from evals.evaluator import check_answer_match
 
 def run_main():
     parser = argparse.ArgumentParser(description="Run Pi Agent Deep Search via Code REPL")
